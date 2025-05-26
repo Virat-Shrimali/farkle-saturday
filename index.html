@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Farkle Game - Modern Brown UI</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&display=swap');
+
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: 'Montserrat', sans-serif;
+      background: linear-gradient(135deg, #5D3A00, #B97A20);
+      color: #fff;
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    .container {
+      background: #3e2f0b;
+      max-width: 700px;
+      width: 90vw;
+      padding: 20px 30px;
+      border-radius: 12px;
+      box-shadow: 0 8px 20px rgba(0,0,0,0.6);
+    }
+    h1 {
+      text-align: center;
+      margin-bottom: 10px;
+      font-weight: 700;
+      letter-spacing: 1.2px;
+    }
+    #mode-select {
+      margin-bottom: 20px;
+      text-align: center;
+    }
+    #mode-select label {
+      margin: 0 10px;
+      cursor: pointer;
+      font-weight: 600;
+      user-select: none;
+    }
+    .scoreboard {
+      display: flex;
+      justify-content: space-around;
+      margin-bottom: 25px;
+      font-weight: 600;
+      font-size: 1.1em;
+      border-bottom: 2px solid #a97e2f;
+      padding-bottom: 12px;
+    }
+    .player-score {
+      flex: 1;
+      text-align: center;
+      padding: 8px 10px;
+      background: #5e4b18;
+      border-radius: 8px;
+      margin: 0 8px;
+      box-shadow: inset 0 0 8px #987d38;
+    }
+    .player-score.current {
+      background: #b3871a;
+      color: #311f00;
+      font-weight: 700;
+      box-shadow: 0 0 10px #ffe066;
+    }
+    #dice-container {
+      display: flex;
+      justify-content: center;
+      margin-top: 25px;
+      margin-bottom: 25px;
+      gap: 12px;
+    }
+    .dice {
+      font-size: 64px;
+      width: 52px;
+      height: 52px;
+      margin-top: 10px;
+      margin-bottom: 10px;
+      background: #a97e2f;
+      border-radius: 10px;
+      box-shadow: 0 4px 6px #6f5015 inset, 0 2px 4px rgba(0,0,0,0.4);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      cursor: pointer;
+      user-select: none;
+      transition: background 0.3s, transform 0.2s;
+      color: #311f00;
+      font-weight: 700;
+      border: 2px solid transparent;
+    }
+    .dice.selected {
+      background: #fff5a6;
+      border-color: #d49f10;
+      color: #5d3a00;
+      transform: scale(1.15);
+      box-shadow: 0 0 15px #ffd54f;
+    }
+    .controls {
+      display: flex;
+      justify-content: center;
+      gap: 20px;
+      margin-bottom: 20px;
+    }
+    button {
+      background: #b3871a;
+      border: none;
+      border-radius: 10px;
+      padding: 12px 25px;
+      font-size: 1em;
+      font-weight: 600;
+      color: #311f00;
+      cursor: pointer;
+      box-shadow: 0 5px 0 #7c5e0e;
+      transition: background 0.3s, box-shadow 0.2s, transform 0.15s;
+      user-select: none;
+    }
+    button:active {
+      box-shadow: none;
+      transform: translateY(3px);
+    }
+    button:disabled {
+      background: #7c5e0e;
+      cursor: not-allowed;
+      box-shadow: none;
+      color: #5a4a11;
+    }
+    .log {
+      display: none;
+      background: #5e4b18;
+      padding: 15px;
+      border-radius: 10px;
+      height: 160px;
+      overflow-y: auto;
+      font-size: 0.9em;
+      line-height: 1.3;
+      box-shadow: inset 0 0 12px #7a6420;
+    }
+    #log{
+      display:none;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Farkle Game</h1>
+    <div id="mode-select">
+      <label><input type="radio" name="gameMode" value="2p" checked> 2 Players</label>
+      <label><input type="radio" name="gameMode" value="vsComputer"> vs Computer</label>
+    </div>
+    <div class="scoreboard" id="scoreboard"></div>
+    <div id="dice-container"></div>
+    <div class="controls">
+      <button id="roll-button">Roll Dice</button>
+      <button id="bank-button" disabled>Lock Dice</button>
+      <button id="end-turn-button" disabled>End Turn</button>
+    </div>
+    <div class="log" id="log"></div>
+    <div id="announcement" style="color: red; font-weight: bold;"></div>
+  </div>
+
+  <script>
+    const rollButton = document.getElementById('roll-button');
+    const bankButton = document.getElementById('bank-button');
+    const endTurnButton = document.getElementById('end-turn-button');
+    const scoreboard = document.getElementById('scoreboard');
+    const diceContainer = document.getElementById('dice-container');
+    const log = document.getElementById('log');
+    const modeRadios = document.querySelectorAll('input[name="gameMode"]');
+
+    let players = [];
+    let currentPlayer = 0;
+    let currentScore = 0;
+    let currentDiceCount = 6;
+    let diceValues = [];
+    let rollUsed = false;
+    let gameMode = '2p';
+    let selectedDiceIndices = new Set();
+
+    // Emojis for dice faces
+    const diceFaces = ['⚀','⚁','⚂','⚃','⚄','⚅'];
+
+    // Initialize players based on mode
+    function initPlayers() {
+      if (gameMode === '2p') {
+        players = [
+          { name: 'Player 1', score: 0, isComputer: false },
+          { name: 'Player 2', score: 0, isComputer: false }
+        ];
+      } else {
+        players = [
+          { name: 'Player', score: 0, isComputer: false },
+          { name: 'Computer', score: 0, isComputer: true }
+        ];
+      }
+      currentPlayer = 0;
+      currentScore = 0;
+      currentDiceCount = 6;
+      diceValues = [];
+      rollUsed = false;
+      selectedDiceIndices.clear();
+      updateScoreboard();
+      renderDice();
+      logClear();
+      logMessage(`${players[currentPlayer].name} starts the game.`);
+      updateButtons();
+      if (players[currentPlayer].isComputer) {
+        setTimeout(computerTurn, 1000);
+      }
+    }
+
+    // Update scoreboard UI
+    function updateScoreboard() {
+      scoreboard.innerHTML = players.map((p, i) => `
+        <div class="player-score ${i === currentPlayer ? 'current' : ''}">
+          ${p.name}<br>Score: ${p.score}
+        </div>
+      `).join('');
+    }
+
+    // Clear log
+    function logClear() {
+      log.innerHTML = '';
+    }
+
+    // Log message helper
+    function logMessage(msg) {
+      // log.innerHTML += `<div>${msg}</div>`;
+      // log.scrollTop = log.scrollHeight;
+    }
+
+    // Roll dice randomly
+    function rollDice(num) {
+      return Array.from({ length: num }, () => Math.floor(Math.random() * 6) + 1);
+    }
+
+    // Render dice on UI
+    function renderDice() {
+      diceContainer.innerHTML = diceValues.map((val, i) => `
+        <div class="dice ${selectedDiceIndices.has(i) ? 'selected' : ''}" data-index="${i}">${diceFaces[val - 1]}</div>
+      `).join('');
+      // Attach event listeners only if player turn and not computer
+      if (!players[currentPlayer].isComputer) {
+        document.querySelectorAll('.dice').forEach(die => {
+          die.onclick = () => {
+            if (!rollUsed) return; // Can't select dice before rolling
+            const idx = parseInt(die.dataset.index);
+            if (selectedDiceIndices.has(idx)) {
+              selectedDiceIndices.delete(idx);
+              die.classList.remove('selected');
+            } else {
+              selectedDiceIndices.add(idx);
+              die.classList.add('selected');
+            }
+            updateButtons();
+          };
+        });
+      }
+    }
+
+    // Calculate score based on dice array
+    function calculateScore(dice) {
+      if (dice.length === 0) return 0;
+      let counts = Array(7).fill(0);
+      dice.forEach(d => counts[d]++);
+      let score = 0;
+
+      // Straight 1-6
+      if (counts.slice(1).every(c => c === 1)) return 1500;
+
+      // Three pairs
+      if (counts.filter(c => c === 2).length === 3) return 1500;
+
+      // Two triplets
+      if (counts.filter(c => c === 3).length === 2) return 2500;
+
+      // Three or more of a kind
+      for (let i = 1; i <= 6; i++) {
+        if (counts[i] >= 3) {
+          if (i === 1) score += 1000 * (counts[i] === 3 ? 1 : 2 ** (counts[i]-3));
+          else score += i * 100 * (counts[i] === 3 ? 1 : 2 ** (counts[i]-3));
+          counts[i] -= counts[i];
+        }
+      }
+
+      // Ones and fives outside triples
+      score += counts[1] * 100 + counts[5] * 50;
+      return score;
+    }
+
+    // Check if all dice score (Hot Dice)
+    function allDiceScore(dice) {
+      return calculateScore(dice) === sumSingleScores(dice);
+    }
+    // Sum scores for single ones and fives only (non combos)
+    function sumSingleScores(dice) {
+      let counts = Array(7).fill(0);
+      dice.forEach(d => counts[d]++);
+      return counts[1] * 100 + counts[5] * 50;
+    }
+
+    // Update buttons states
+    function updateButtons() {
+      rollButton.disabled = rollUsed || players[currentPlayer].isComputer;
+      bankButton.disabled = !rollUsed || selectedDiceIndices.size === 0;
+      endTurnButton.disabled = !rollUsed;
+    }
+
+    // Handle rolling dice
+    function onRoll() {
+      if (rollUsed) {
+        logMessage('You can only roll once per turn. Please bank or end your turn.');
+        return;
+      }
+      diceValues = rollDice(currentDiceCount);
+        if (!diceValues.includes(1) && !diceValues.includes(5)) {
+        const announcementDiv = document.getElementById('announcement');
+        announcementDiv.textContent = 'Farkle!';
+        announcementDiv.style.display = 'block';
+
+        setTimeout(() => {
+          announcementDiv.style.display = 'none';
+        }, 2000);
+      }
+
+      renderDice();
+
+      const scoreThisRoll = calculateScore(diceValues);
+      if (scoreThisRoll === 0) {
+        logMessage(`${players[currentPlayer].name} farkled with: ${diceValues.map(d=>diceFaces[d-1]).join(' ')}. Turn over.`);
+        nextTurn();
+        return;
+      }
+      logMessage(`${players[currentPlayer].name} rolled: ${diceValues.map(d=>diceFaces[d-1]).join(' ')} scoring ${scoreThisRoll} points.`);
+      rollUsed = true;
+      selectedDiceIndices.clear();
+      currentScore += 0; // Only add when banking dice
+      updateButtons();
+    }
+
+    // Handle banking points
+    function onBank() {
+      if (!rollUsed) {
+        logMessage('You must roll before banking points.');
+        return;
+      }
+      if (selectedDiceIndices.size === 0) {
+        logMessage('Select dice to bank their score.');
+        return;
+      }
+      const selectedDice = [...selectedDiceIndices].map(i => diceValues[i]);
+      const scoreSelected = calculateScore(selectedDice);
+      if (scoreSelected === 0) {
+        logMessage('Selected dice do not yield any points.');
+        return;
+      }
+
+      currentScore += scoreSelected;
+      players[currentPlayer].score += currentScore;
+      logMessage(`${players[currentPlayer].name} banked ${currentScore} points. Total score: ${players[currentPlayer].score}`);
+      if (players[currentPlayer].score >= 10000) {
+        logMessage(`🎉 ${players[currentPlayer].name} wins the game with ${players[currentPlayer].score} points! 🎉`);
+rollButton.disabled = true;
+bankButton.disabled = true;
+endTurnButton.disabled = true;
+return;
+}
+// Update dice count based on how many dice were banked
+currentDiceCount -= selectedDice.length;
+if (currentDiceCount === 0) {
+// Hot Dice! Player gets all 6 dice again
+currentDiceCount = 6;
+logMessage('Hot Dice! You get all 6 dice again.');
+}
+currentScore = 0;
+rollUsed = false;
+selectedDiceIndices.clear();
+updateScoreboard();
+renderDice();
+updateButtons();
+if (players[currentPlayer].isComputer) {
+setTimeout(computerTurn, 1000);
+}
+}
+
+
+// Handle ending turn
+function onEndTurn() {
+  if (!rollUsed) {
+    logMessage('You must roll at least once before ending your turn.');
+    return;
+  }
+  currentScore = 0;
+  currentDiceCount = 6;
+  rollUsed = false;
+  selectedDiceIndices.clear();
+  logMessage(`${players[currentPlayer].name} ended their turn.`);
+  nextTurn();
+}
+
+// Switch to next player
+function nextTurn() {
+  currentPlayer = (currentPlayer + 1) % players.length;
+  currentScore = 0;
+  currentDiceCount = 6;
+  rollUsed = false;
+  selectedDiceIndices.clear();
+  updateScoreboard();
+  renderDice();
+  updateButtons();
+  logMessage(`It's now ${players[currentPlayer].name}'s turn.`);
+  if (players[currentPlayer].isComputer) {
+    setTimeout(computerTurn, 1200);
+  }
+}
+
+// Computer's turn logic
+function computerTurn() {
+  if (!players[currentPlayer].isComputer) return;
+
+  logMessage('Computer is thinking...');
+  rollButton.disabled = true;
+  bankButton.disabled = true;
+  endTurnButton.disabled = true;
+
+  // Simple AI Strategy:
+  // 1. Roll dice automatically
+  diceValues = rollDice(currentDiceCount);
+  renderDice();
+
+  const scoreThisRoll = calculateScore(diceValues);
+  if (scoreThisRoll === 0) {
+    logMessage(`Computer farkled with ${diceValues.map(d=>diceFaces[d-1]).join(' ')}. Turn over.`);
+    nextTurn();
+    return;
+  }
+  logMessage(`Computer rolled: ${diceValues.map(d=>diceFaces[d-1]).join(' ')} scoring ${scoreThisRoll} points.`);
+
+  // 2. Select scoring dice automatically (all scoring dice)
+  let indicesToKeep = [];
+  for (let i = 0; i < diceValues.length; i++) {
+    let testSet = [diceValues[i]];
+    if (calculateScore(testSet) > 0) indicesToKeep.push(i);
+  }
+
+  if (indicesToKeep.length === 0) {
+    // No scoring dice? End turn (should not happen if scoreThisRoll>0)
+    logMessage('Computer found no scoring dice to keep.');
+    nextTurn();
+    return;
+  }
+
+  // Bank those dice immediately for simplicity
+  const selectedDice = indicesToKeep.map(i => diceValues[i]);
+  const scoreSelected = calculateScore(selectedDice);
+  players[currentPlayer].score += scoreSelected;
+  logMessage(`Computer banked ${scoreSelected} points. Total score: ${players[currentPlayer].score}`);
+
+  if (players[currentPlayer].score >= 10000) {
+    logMessage(`🎉 Computer wins the game with ${players[currentPlayer].score} points! 🎉`);
+    rollButton.disabled = true;
+    bankButton.disabled = true;
+    endTurnButton.disabled = true;
+    return;
+  }
+
+  currentDiceCount -= selectedDice.length;
+  if (currentDiceCount === 0) {
+    currentDiceCount = 6;
+    logMessage('Hot Dice for Computer! Gets all 6 dice again.');
+  }
+
+  currentScore = 0;
+  rollUsed = false;
+  selectedDiceIndices.clear();
+  updateScoreboard();
+  renderDice();
+  updateButtons();
+
+  // Computer decides randomly to continue or end turn (50% chance)
+  if (Math.random() < 0.5) {
+    logMessage('Computer ends its turn.');
+    nextTurn();
+  } else {
+    logMessage('Computer rolls again.');
+    setTimeout(computerRollAgain, 1200);
+  }
+}
+
+// Computer rolls again during its turn
+function computerRollAgain() {
+  if (!players[currentPlayer].isComputer) return;
+
+  diceValues = rollDice(currentDiceCount);
+  renderDice();
+
+  const scoreThisRoll = calculateScore(diceValues);
+  if (scoreThisRoll === 0) {
+    logMessage(`Computer farkled with ${diceValues.map(d=>diceFaces[d-1]).join(' ')}. Turn over.`);
+    nextTurn();
+    return;
+  }
+  logMessage(`Computer rolled: ${diceValues.map(d=>diceFaces[d-1]).join(' ')} scoring ${scoreThisRoll} points.`);
+
+  let indicesToKeep = [];
+  for (let i = 0; i < diceValues.length; i++) {
+    let testSet = [diceValues[i]];
+    if (calculateScore(testSet) > 0) indicesToKeep.push(i);
+  }
+
+  if (indicesToKeep.length === 0) {
+    logMessage('Computer found no scoring dice to keep.');
+    nextTurn();
+    return;
+  }
+
+  const selectedDice = indicesToKeep.map(i => diceValues[i]);
+  const scoreSelected = calculateScore(selectedDice);
+  players[currentPlayer].score += scoreSelected;
+  logMessage(`Computer banked ${scoreSelected} points. Total score: ${players[currentPlayer].score}`);
+
+  if (players[currentPlayer].score >= 10000) {
+    logMessage(`🎉 Computer wins the game with ${players[currentPlayer].score} points! 🎉`);
+    rollButton.disabled = true;
+    bankButton.disabled = true;
+    endTurnButton.disabled = true;
+    return;
+  }
+
+  currentDiceCount -= selectedDice.length;
+  if (currentDiceCount === 0) {
+    currentDiceCount = 6;
+    logMessage('Hot Dice for Computer! Gets all 6 dice again.');
+  }
+
+  currentScore = 0;
+  rollUsed = false;
+  selectedDiceIndices.clear();
+  updateScoreboard();
+  renderDice();
+  updateButtons();
+
+  // Computer randomly decides to end or continue again
+  if (Math.random() < 0.5) {
+    logMessage('Computer ends its turn.');
+    nextTurn();
+  } else {
+    logMessage('Computer rolls again.');
+    setTimeout(computerRollAgain, 1200);
+  }
+}
+
+// Event listeners
+rollButton.onclick = onRoll;
+bankButton.onclick = onBank;
+endTurnButton.onclick = onEndTurn;
+modeRadios.forEach(radio => {
+  radio.onchange = () => {
+    gameMode = document.querySelector('input[name="gameMode"]:checked').value;
+    initPlayers();
+  };
+}
+);
+
+// Start game
+initPlayers();
+</script> </body> </html>
