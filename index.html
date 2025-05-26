@@ -160,6 +160,10 @@
     </div>
     <div class="log" id="log"></div>
     <div id="announcement" style="color: red; font-weight: bold;"></div>
+    <div id="locked-dice-display" style="text-align: center; margin-top: 10px; font-weight: bold;">
+  Locked Dice: <span id="locked-dice-values">None</span>
+</div>
+
   </div>
 
   <script>
@@ -175,10 +179,40 @@
     let currentPlayer = 0;
     let currentScore = 0;
     let currentDiceCount = 6;
+    let lockedDiceThisTurn = []; // Accumulates all locked dice faces for current turn
     let diceValues = [];
     let rollUsed = false;
+    let turnScore = 0; // Total score gained in current turn
     let gameMode = '2p';
     let selectedDiceIndices = new Set();
+
+    function isFarkle(currentRoll, lockedDice) {
+      // 1. Check for immediate scoring dice (1 or 5)
+      if (currentRoll.some(val => val === 1 || val === 5)) return false;
+
+      // 2. Combine locked dice and current roll
+      const combined = [...lockedDice, ...currentRoll];
+      const counts = Array(7).fill(0);
+      for (const die of combined) counts[die]++;
+
+      // 3. Check for straight (1–6)
+      if (counts.slice(1).every(c => c >= 1)) return false;
+
+      // 4. Check for three pairs
+      if (counts.filter(c => c === 2).length === 3) return false;
+
+      // 5. Check for two triplets
+      if (counts.filter(c => c === 3).length === 2) return false;
+
+      // 6. Check for 3+ of a kind
+      for (let i = 1; i <= 6; i++) {
+        if (counts[i] >= 3) return false;
+      }
+
+      // If none of the above apply, it's a Farkle
+      return true;
+    }
+
 
     // Emojis for dice faces
     const diceFaces = ['⚀','⚁','⚂','⚃','⚄','⚅'];
@@ -316,15 +350,18 @@
         return;
       }
       diceValues = rollDice(currentDiceCount);
-        if (!diceValues.includes(1) && !diceValues.includes(5)) {
+        if (isFarkle(diceValues, lockedDiceThisTurn)) {
         const announcementDiv = document.getElementById('announcement');
         announcementDiv.textContent = 'Farkle!';
         announcementDiv.style.display = 'block';
 
         setTimeout(() => {
           announcementDiv.style.display = 'none';
+          nextTurn(); // end turn after farkle
         }, 2000);
-      }
+        return;
+}
+
 
       renderDice();
 
@@ -334,57 +371,70 @@
         nextTurn();
         return;
       }
-      logMessage(`${players[currentPlayer].name} rolled: ${diceValues.map(d=>diceFaces[d-1]).join(' ')} scoring ${scoreThisRoll} points.`);
+      // logMessage(`${players[currentPlayer].name} rolled: ${diceValues.map(d=>diceFaces[d-1]).join(' ')} scoring ${scoreThisRoll} points.`);
+      logMessage(`${players[currentPlayer].name} rolled: ${diceValues.map(d=>diceFaces[d-1]).join(' ')}`);
+
       rollUsed = true;
       selectedDiceIndices.clear();
       currentScore += 0; // Only add when banking dice
       updateButtons();
+      document.getElementById('locked-dice-values').textContent = 'None';
+
     }
 
     // Handle banking points
     function onBank() {
-      if (!rollUsed) {
-        logMessage('You must roll before banking points.');
-        return;
-      }
-      if (selectedDiceIndices.size === 0) {
-        logMessage('Select dice to bank their score.');
-        return;
-      }
-      const selectedDice = [...selectedDiceIndices].map(i => diceValues[i]);
-      const scoreSelected = calculateScore(selectedDice);
-      if (scoreSelected === 0) {
-        logMessage('Selected dice do not yield any points.');
-        return;
-      }
+        if (!rollUsed) {
+          logMessage('You must roll before banking points.');
+          return;
+        }
+        if (selectedDiceIndices.size === 0) {
+          logMessage('Select dice to bank their score.');
+          return;
+        }
+        const selectedDice = [...selectedDiceIndices].map(i => diceValues[i]);
+        const scoreSelected = calculateScore(selectedDice);
+        if (scoreSelected === 0) {
+          logMessage('Selected dice do not yield any points.');
+          return;
+        }
 
-      currentScore += scoreSelected;
-      players[currentPlayer].score += currentScore;
-      logMessage(`${players[currentPlayer].name} banked ${currentScore} points. Total score: ${players[currentPlayer].score}`);
-      if (players[currentPlayer].score >= 10000) {
+        currentScore += scoreSelected;
+        turnScore += scoreSelected;
+        // players[currentPlayer].score += scoreSelected;
+        // Temporarily accumulate points for this turn only
+        turnScore += scoreSelected;
+        currentScore += scoreSelected;
+
+
+        // logMessage(`${players[currentPlayer].name} banked ${currentScore} points. Total score: ${players[currentPlayer].score}`);
+        if (players[currentPlayer].score >= 10000) {
         logMessage(`🎉 ${players[currentPlayer].name} wins the game with ${players[currentPlayer].score} points! 🎉`);
-rollButton.disabled = true;
-bankButton.disabled = true;
-endTurnButton.disabled = true;
-return;
-}
-// Update dice count based on how many dice were banked
-currentDiceCount -= selectedDice.length;
-if (currentDiceCount === 0) {
-// Hot Dice! Player gets all 6 dice again
-currentDiceCount = 6;
-logMessage('Hot Dice! You get all 6 dice again.');
-}
-currentScore = 0;
-rollUsed = false;
-selectedDiceIndices.clear();
-updateScoreboard();
-renderDice();
-updateButtons();
-if (players[currentPlayer].isComputer) {
-setTimeout(computerTurn, 1000);
-}
-}
+        rollButton.disabled = true;
+        bankButton.disabled = true;
+        endTurnButton.disabled = true;
+        return;
+        }
+        // Update dice count based on how many dice were banked
+        currentDiceCount -= selectedDice.length;
+        if (currentDiceCount === 0) {
+        // Hot Dice! Player gets all 6 dice again
+        currentDiceCount = 6;
+        logMessage('Hot Dice! You get all 6 dice again.');
+        }
+        currentScore = 0;
+        rollUsed = false;
+        lockedDiceThisTurn.push(...selectedDice.map(d => diceFaces[d - 1]));
+        updateLockedDiceDisplay();
+
+        selectedDiceIndices.clear();
+        updateScoreboard();
+        renderDice();
+        updateButtons();
+        if (players[currentPlayer].isComputer) {
+        setTimeout(computerTurn, 1000);
+        }
+        }
 
 
 // Handle ending turn
@@ -392,17 +442,45 @@ function onEndTurn() {
   if (!rollUsed) {
     logMessage('You must roll at least once before ending your turn.');
     return;
+    
   }
+  players[currentPlayer].score += turnScore;
+  logMessage(`${players[currentPlayer].name} earned ${turnScore} points this turn.`);
+  updateScoreboard(); // Now update the UI just once
+  turnScore = 0;
+
   currentScore = 0;
   currentDiceCount = 6;
   rollUsed = false;
   selectedDiceIndices.clear();
   logMessage(`${players[currentPlayer].name} ended their turn.`);
+  logMessage(`${players[currentPlayer].name} earned ${turnScore} points this turn.`);
+  logMessage(`${players[currentPlayer].name} earned ${turnScore} points this turn.`);
+
+  document.getElementById('locked-dice-values').textContent = 'None';
+
   nextTurn();
+  document.getElementById('locked-dice-values').textContent = 'None';
+  lockedDiceThisTurn = [];
+  updateLockedDiceDisplay();
+
+
+  
 }
+function updateLockedDiceDisplay() {
+  const lockedDisplay = document.getElementById('locked-dice-values');
+  if (lockedDiceThisTurn.length === 0) {
+    lockedDisplay.textContent = 'None';
+  } else {
+    lockedDisplay.textContent = lockedDiceThisTurn.join(' ');
+  }
+}
+
 
 // Switch to next player
 function nextTurn() {
+  turnScore = 0;
+
   currentPlayer = (currentPlayer + 1) % players.length;
   currentScore = 0;
   currentDiceCount = 6;
@@ -415,6 +493,9 @@ function nextTurn() {
   if (players[currentPlayer].isComputer) {
     setTimeout(computerTurn, 1200);
   }
+  lockedDiceThisTurn = [];
+  document.getElementById('locked-dice-values').textContent = 'None';
+
 }
 
 // Computer's turn logic
